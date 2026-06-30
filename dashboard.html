@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard Redes Sociais — TikTok &amp; YouTube Cortes</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1117; --card:#181b24; --card2:#1f2330; --text:#eef0f5; --muted:#9aa3b5;
+    --accent:#7c5cff; --accent2:#00d4b5; --up:#27c281; --down:#ff5c6c; --border:#2a2e3c;
+    --warn:#ffb84c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:'Segoe UI',Roboto,Arial,sans-serif;padding:24px 32px 60px}
+  h1{font-size:22px;margin:0 0 4px}
+  .subtitle{color:var(--muted);font-size:13px;margin-bottom:24px;display:flex;align-items:center;gap:12px}
+  .sync-badge{display:inline-flex;align-items:center;gap:5px;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:11px;color:var(--muted)}
+  .sync-badge .dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+  .sync-badge.ok .dot{background:var(--up);box-shadow:0 0 6px var(--up)}
+  .sync-badge.error .dot{background:var(--down)}
+  .sync-badge.loading .dot{background:var(--warn);animation:pulse 1s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  .tabs{display:flex;gap:8px;margin-bottom:20px}
+  .tab-btn{background:var(--card);border:1px solid var(--border);color:var(--text);padding:10px 18px;border-radius:10px;cursor:pointer;font-size:14px;font-weight:600;transition:background .2s}
+  .tab-btn.active{background:var(--accent);border-color:var(--accent)}
+  .section{display:none}
+  .section.active{display:block}
+
+  /* KPI Cards */
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:14px;margin-bottom:26px}
+  .kpi{background:linear-gradient(160deg,var(--card2),var(--card));border:1px solid var(--border);border-radius:14px;padding:16px 18px;position:relative;overflow:hidden}
+  .kpi::before{content:'';position:absolute;top:-20px;right:-20px;width:60px;height:60px;border-radius:50%;opacity:.07;background:var(--accent)}
+  .kpi .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+  .kpi .value{font-size:26px;font-weight:700;line-height:1}
+  .kpi .delta{font-size:12px;margin-top:6px;font-weight:600}
+  .kpi .delta.up{color:var(--up)} .kpi .delta.down{color:var(--down)} .kpi .delta.flat{color:var(--muted)}
+  .kpi.skeleton .value,.kpi.skeleton .delta{background:var(--border);color:transparent;border-radius:6px;animation:shimmer 1.2s infinite}
+  @keyframes shimmer{0%,100%{opacity:.5}50%{opacity:1}}
+
+  /* Chart panels */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px}
+  .panel h3{margin:0 0 14px;font-size:13px;color:var(--text);display:flex;justify-content:space-between;align-items:center;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+  .panel h3 .tag{font-size:10px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;background:var(--card2);border:1px solid var(--border);padding:2px 7px;border-radius:8px}
+  .full{grid-column:1/-1}
+  canvas{max-height:260px}
+
+  /* Error banner */
+  .err-banner{background:#2d1a1a;border:1px solid #5a2a2a;color:#ff9090;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;display:none}
+  .err-banner.show{display:block}
+
+  /* Legend note */
+  .chart-legend{font-size:11px;color:var(--muted);margin-top:8px;display:flex;gap:14px;flex-wrap:wrap}
+  .chart-legend span{display:flex;align-items:center;gap:4px}
+  .chart-legend .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+
+  footer{margin-top:40px;color:var(--muted);font-size:11px;text-align:center;line-height:1.7}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+
+<h1>📊 Dashboard de Redes Sociais</h1>
+<div class="subtitle">
+  TikTok &amp; YouTube — Cortes &nbsp;|&nbsp; Dados ao vivo da planilha Google Sheets
+  <span class="sync-badge loading" id="syncBadge"><span class="dot"></span><span id="syncText">Carregando…</span></span>
+</div>
+
+<div class="err-banner" id="errBanner"></div>
+
+<div class="tabs">
+  <button class="tab-btn active" id="btn-tiktok" onclick="showTab('tiktok')">TikTok</button>
+  <button class="tab-btn" id="btn-youtube" onclick="showTab('youtube')">YouTube — Cortes</button>
+</div>
+
+<!-- ============ TIKTOK ============ -->
+<div id="tiktok" class="section active">
+  <div class="kpi-grid" id="tt-kpis">
+    <!-- Skeletons -->
+    <div class="kpi skeleton"><div class="label">Seguidores Totais</div><div class="value">------</div><div class="delta">--</div></div>
+    <div class="kpi skeleton"><div class="label">Novos Seguidores</div><div class="value">------</div><div class="delta">--</div></div>
+    <div class="kpi skeleton"><div class="label">Visualizações</div><div class="value">------</div><div class="delta">--</div></div>
+    <div class="kpi skeleton"><div class="label">Curtidas</div><div class="value">------</div><div class="delta">--</div></div>
+    <div class="kpi skeleton"><div class="label">Views de Perfil</div><div class="value">------</div><div class="delta">--</div></div>
+    <div class="kpi skeleton"><div class="label">Compartilhamentos</div><div class="value">------</div><div class="delta">--</div></div>
+  </div>
+  <div class="grid2">
+    <div class="panel">
+      <h3>Visualizações <span class="tag">por semana</span></h3>
+      <canvas id="tt-views"></canvas>
+      <div class="chart-legend">
+        <span><i class="dot" style="background:#27c281"></i>Pico</span>
+        <span><i class="dot" style="background:#ff5c6c"></i>Queda máx.</span>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Seguidores Totais <span class="tag">acumulado</span></h3>
+      <canvas id="tt-followers"></canvas>
+    </div>
+    <div class="panel">
+      <h3>Curtidas vs Compartilhamentos <span class="tag">semana</span></h3>
+      <canvas id="tt-engagement"></canvas>
+    </div>
+    <div class="panel">
+      <h3>Novos Seguidores <span class="tag">semana</span></h3>
+      <canvas id="tt-newfollowers"></canvas>
+    </div>
+    <div class="panel full">
+      <h3>Views de Perfil <span class="tag">por semana</span></h3>
+      <canvas id="tt-profileviews"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ============ YOUTUBE ============ -->
+<div id="youtube" class="section">
+  <div class="kpi-grid" id="yt-kpis">
+    <div class="kpi skeleton"><div class="label">Impressões</div><div class="value">------</div><div class="delta">--</div></div>
+    <div class="kpi skeleton"><div class="label">Visualizações</div><div class="value">------</div><div class="delta">--</div></div>
+    <div class="kpi skeleton"><div class="label">Tempo de Exibição</div><div class="value">------</div><div class="delta">--</div></div>
+    <div class="kpi skeleton"><div class="label">Inscritos Totais</div><div class="value">------</div><div class="delta">--</div></div>
+    <div class="kpi skeleton"><div class="label">Inscrições Obtidas</div><div class="value">------</div><div class="delta">--</div></div>
+    <div class="kpi skeleton"><div class="label">CTR</div><div class="value">------</div><div class="delta">--</div></div>
+    <div class="kpi skeleton"><div class="label">Retenção</div><div class="value">------</div><div class="delta">--</div></div>
+    <div class="kpi skeleton"><div class="label">Curtidas</div><div class="value">------</div><div class="delta">--</div></div>
+  </div>
+  <div class="grid2">
+    <div class="panel">
+      <h3>Visualizações <span class="tag">por semana</span></h3>
+      <canvas id="yt-views"></canvas>
+      <div class="chart-legend">
+        <span><i class="dot" style="background:#27c281"></i>Pico</span>
+        <span><i class="dot" style="background:#ff5c6c"></i>Queda máx.</span>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Impressões <span class="tag">por semana</span></h3>
+      <canvas id="yt-impressions"></canvas>
+    </div>
+    <div class="panel">
+      <h3>Inscrições Obtidas <span class="tag">por semana</span></h3>
+      <canvas id="yt-subs"></canvas>
+    </div>
+    <div class="panel">
+      <h3>CTR % vs Retenção % <span class="tag">semana</span></h3>
+      <canvas id="yt-ctr"></canvas>
+    </div>
+    <div class="panel full">
+      <h3>Curtidas · Compartilhamentos · Views de Perfil <span class="tag">semana</span></h3>
+      <canvas id="yt-engagement"></canvas>
+    </div>
+  </div>
+</div>
+
+<footer>
+  Dashboard dinâmico · Dados via Google Sheets gviz · Construído com Chart.js<br>
+  Pronto para hospedar em <strong>GitHub Pages</strong>, <strong>Netlify</strong> ou domínio próprio — arquivo HTML único, sem servidor.<br>
+  <span id="lastSync" style="color:var(--muted)"></span>
+</footer>
+
+<script>
+/* ─── CONFIG ───────────────────────────────────────────── */
+const SHEET_ID = '1jXQcDGSvweBxpGjkea4TqL2DPBRJHDWliRtgV30l2W4';
+const GID_TT   = '618666212';   // Dash Tiktok
+const GID_YT   = '1306894247';  // Dash Youtube - Cortes
+
+/* ─── THEME ─────────────────────────────────────────────── */
+const C = {
+  accent:'#7c5cff', teal:'#00d4b5', warn:'#ffb84c',
+  up:'#27c281', down:'#ff5c6c', grid:'#2a2e3c', text:'#9aa3b5'
+};
+
+Chart.defaults.color = C.text;
+Chart.defaults.borderColor = C.grid;
+Chart.defaults.font.family = "'Segoe UI', Roboto, Arial, sans-serif";
+
+/* ─── UTILITIES ─────────────────────────────────────────── */
+const fmt  = n => (n == null ? '—' : Number(n).toLocaleString('pt-BR'));
+const fmtP = n => (n == null ? '—' : (n*100).toFixed(2).replace('.',',') + '%');
+const tab  = id => document.getElementById(id);
+
+// JSONP loader using Google Visualization Query API
+function gvizLoad(gid, range, cbName) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Timeout ao carregar dados')), 12000);
+    window[cbName] = (resp) => {
+      clearTimeout(timeout);
+      delete window[cbName];
+      if (resp.status === 'error') {
+        reject(new Error(resp.errors ? resp.errors[0].message : 'Erro desconhecido'));
+      } else {
+        resolve(resp.table);
+      }
+    };
+    const s = document.createElement('script');
+    s.onerror = () => { clearTimeout(timeout); reject(new Error('Falha ao carregar script')); };
+    s.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq`
+          + `?tqx=out:json;responseHandler:${cbName}&gid=${gid}&range=${encodeURIComponent(range)}`;
+    document.head.appendChild(s);
+  });
+}
+
+// Get cell value from gviz row
+function v(row, col) {
+  if (!row || !row.c || !row.c[col]) return null;
+  return row.c[col].v;
+}
+
+// Build point colors array (highlight peak=green, trough=red, rest=base)
+function pointColors(arr, base) {
+  const valid = arr.filter(x => x != null);
+  const mx = Math.max(...valid), mn = Math.min(...valid);
+  return arr.map(x => x === mx ? C.up : x === mn ? C.down : base);
+}
+function pointRadii(arr) {
+  const valid = arr.filter(x => x != null);
+  const mx = Math.max(...valid), mn = Math.min(...valid);
+  return arr.map(x => (x === mx || x === mn) ? 7 : 3);
+}
+
+// Find last row index where data is "real" (not all repeating placeholders at the end)
+function lastRealIdx(rows, checkCol) {
+  for (let i = rows.length - 1; i > 0; i--) {
+    if (v(rows[i], checkCol) !== v(rows[i-1], checkCol)) return i;
+  }
+  return 0;
+}
+
+// Shared chart options
+function lineOpts(yLabel) {
+  return {
+    responsive: true, maintainAspectRatio: true,
+    plugins: { legend: { labels: { color: C.text, boxWidth: 12 } } },
+    scales: {
+      x: { ticks: { color: C.text, maxRotation: 45, font:{size:10} }, grid: { color: C.grid } },
+      y: { ticks: { color: C.text }, grid: { color: C.grid },
+           title: { display: !!yLabel, text: yLabel, color: C.text } }
+    }
+  };
+}
+function barOpts() { return lineOpts(''); }
+
+// KPI card HTML
+function kpiHtml(label, value, deltaText, deltaClass) {
+  return `<div class="kpi">
+    <div class="label">${label}</div>
+    <div class="value">${value}</div>
+    <div class="delta ${deltaClass}">${deltaText}</div>
+  </div>`;
+}
+
+function deltaBadge(cur, prev, isPercent) {
+  if (prev == null || cur == null) return { text: '—', cls: 'flat' };
+  const diff = cur - prev;
+  const cls  = diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat';
+  const sign = diff > 0 ? '▲ +' : diff < 0 ? '▼ ' : '■ ';
+  const val  = isPercent ? (diff*100).toFixed(2).replace('.',',')+'pp' : fmt(diff);
+  return { text: sign + val + ' vs semana anterior', cls };
+}
+
+/* ─── CHART REGISTRY (destroy before redraw) ────────────── */
+const charts = {};
+function mkChart(id, config) {
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(tab(id), config);
+}
+
+/* ══════════════════════════════════════════════════════════
+   TIKTOK
+   Cols (0-based, range A1:Z49):
+   3=SegTotal 4=SegNovos 5=Views 6=Curtidas 7=ViewsPerfil 8=Compartilhamentos
+   20=SegTotal-TR 21=SegNovos-TR 22=Views-TR 23=Curtidas-TR 24=ViewsPerfil-TR 25=Compart-TR
+   ══════════════════════════════════════════════════════════ */
+function renderTikTok(table) {
+  const rows  = table.rows;
+  const end   = lastRealIdx(rows, 5); // col 5 = Visualizações
+  const real  = rows.slice(0, end + 1);
+
+  const labels   = real.map(r => v(r,0));          // Período
+  const segTotal = real.map(r => v(r,3));
+  const segNovos = real.map(r => v(r,4));
+  const views    = real.map(r => v(r,5));
+  const likes    = real.map(r => v(r,6));
+  const profV    = real.map(r => v(r,7));
+  const shares   = real.map(r => v(r,8));
+
+  // Tempo Real from first row (same in all rows)
+  const tr = {
+    segTotal: v(rows[0], 20), segNovos: v(rows[0], 21),
+    views: v(rows[0], 22),    likes:    v(rows[0], 23),
+    profV: v(rows[0], 24),    shares:   v(rows[0], 25)
+  };
+
+  // Last historical week for delta
+  const last = { segTotal: segTotal[segTotal.length-1], segNovos: segNovos[segNovos.length-1],
+                 views: views[views.length-1], likes: likes[likes.length-1],
+                 profV: profV[profV.length-1], shares: shares[shares.length-1] };
+  const prev = { segTotal: segTotal[segTotal.length-2], segNovos: segNovos[segNovos.length-2],
+                 views: views[views.length-2], likes: likes[likes.length-2],
+                 profV: profV[profV.length-2], shares: shares[shares.length-2] };
+
+  tab('tt-kpis').innerHTML =
+    kpiHtml('Seguidores Totais <small style="font-weight:400;color:#666">(TR)</small>', fmt(tr.segTotal), deltaBadge(last.segTotal, prev.segTotal).text, deltaBadge(last.segTotal, prev.segTotal).cls) +
+    kpiHtml('Novos Seguidores <small style="font-weight:400;color:#666">(TR)</small>',  fmt(tr.segNovos), deltaBadge(last.segNovos, prev.segNovos).text, deltaBadge(last.segNovos, prev.segNovos).cls) +
+    kpiHtml('Visualizações <small style="font-weight:400;color:#666">(TR)</small>',     fmt(tr.views),    deltaBadge(last.views, prev.views).text, deltaBadge(last.views, prev.views).cls) +
+    kpiHtml('Curtidas <small style="font-weight:400;color:#666">(TR)</small>',           fmt(tr.likes),    deltaBadge(last.likes, prev.likes).text, deltaBadge(last.likes, prev.likes).cls) +
+    kpiHtml('Views de Perfil <small style="font-weight:400;color:#666">(TR)</small>',   fmt(tr.profV),    deltaBadge(last.profV, prev.profV).text, deltaBadge(last.profV, prev.profV).cls) +
+    kpiHtml('Compartilhamentos <small style="font-weight:400;color:#666">(TR)</small>', fmt(tr.shares),   deltaBadge(last.shares, prev.shares).text, deltaBadge(last.shares, prev.shares).cls);
+
+  // Short labels (remove "Semana" for brevity)
+  const lbl = labels.map(l => l.replace('ª Semana ', ' S').replace('1 S','S1 ').replace('2 S','S2 ').replace('3 S','S3 ').replace('4 S','S4 '));
+
+  mkChart('tt-views', { type:'line', data:{ labels:lbl, datasets:[{
+    label:'Visualizações', data:views, borderColor:C.accent, backgroundColor:'rgba(124,92,255,.12)',
+    fill:true, tension:.35,
+    pointBackgroundColor: pointColors(views, C.accent),
+    pointRadius: pointRadii(views), pointHoverRadius:8
+  }]}, options: lineOpts('Views') });
+
+  mkChart('tt-followers', { type:'line', data:{ labels:lbl, datasets:[{
+    label:'Seguidores Totais', data:segTotal, borderColor:C.teal, backgroundColor:'rgba(0,212,181,.12)',
+    fill:true, tension:.35, pointRadius:3
+  }]}, options: lineOpts('Seguidores') });
+
+  mkChart('tt-engagement', { type:'bar', data:{ labels:lbl, datasets:[
+    { label:'Curtidas',          data:likes,   backgroundColor:C.accent  },
+    { label:'Compartilhamentos', data:shares,  backgroundColor:C.teal   }
+  ]}, options: barOpts() });
+
+  mkChart('tt-newfollowers', { type:'bar', data:{ labels:lbl, datasets:[{
+    label:'Novos Seguidores', data:segNovos,
+    backgroundColor: segNovos.map(v => v == null ? C.text : v >= 0 ? C.up : C.down)
+  }]}, options: barOpts() });
+
+  mkChart('tt-profileviews', { type:'line', data:{ labels:lbl, datasets:[{
+    label:'Views de Perfil', data:profV, borderColor:C.warn, backgroundColor:'rgba(255,184,76,.12)',
+    fill:true, tension:.35,
+    pointBackgroundColor: pointColors(profV, C.warn),
+    pointRadius: pointRadii(profV), pointHoverRadius:8
+  }]}, options: lineOpts('Views Perfil') });
+}
+
+/* ══════════════════════════════════════════════════════════
+   YOUTUBE CORTES
+   Cols (0-based, range A1:AL49):
+   3=Impressões 4=Visualizações 5=TempoExib 6=InscritosTotais 7=InscriçõesObtidas
+   8=CTR(dec) 9=ContinuaramAssis(dec) 10=MarcaçõesGostei 11=Compartilhamentos 12=ViewsPerfil
+   28=Impressões-TR 29=Viz-TR 30=TempoExib-TR 31=InscritosTotais-TR 32=InscriçõesObtidas-TR
+   33=CTR-TR(dec) 34=ContinuaramAssis-TR(dec) 35=MarcaçõesGostei-TR 36=Compart-TR 37=ViewsPerfil-TR
+   ══════════════════════════════════════════════════════════ */
+function renderYouTube(table) {
+  const rows = table.rows;
+  const end  = lastRealIdx(rows, 4); // col 4 = Visualizações
+  const real = rows.slice(0, end + 1);
+
+  const labels    = real.map(r => v(r,0));
+  const impress   = real.map(r => v(r,3));
+  const views     = real.map(r => v(r,4));
+  const watchTime = real.map(r => v(r,5));
+  const subsTot   = real.map(r => v(r,6));
+  const subsGain  = real.map(r => v(r,7));
+  const ctr       = real.map(r => v(r,8));       // decimal (0.054 = 5.4%)
+  const retent    = real.map(r => v(r,9));       // decimal (0.76 = 76%)
+  const likes     = real.map(r => v(r,10));
+  const shares    = real.map(r => v(r,11));
+  const profV     = real.map(r => v(r,12));
+
+  // CTR and retention as % for chart display
+  const ctrPct    = ctr.map(x    => x != null ? +(x*100).toFixed(2) : null);
+  const retentPct = retent.map(x => x != null ? +(x*100).toFixed(2) : null);
+
+  const tr = {
+    impress: v(rows[0],28), views: v(rows[0],29), watchTime: v(rows[0],30),
+    subsTot: v(rows[0],31), subsGain: v(rows[0],32),
+    ctr: v(rows[0],33),     retent: v(rows[0],34),
+    likes: v(rows[0],35),   shares: v(rows[0],36), profV: v(rows[0],37)
+  };
+
+  const last = { impress: impress[impress.length-1], views: views[views.length-1],
+                 subsGain: subsGain[subsGain.length-1], ctr: ctr[ctr.length-1],
+                 retent: retent[retent.length-1], likes: likes[likes.length-1] };
+  const prev = { impress: impress[impress.length-2], views: views[views.length-2],
+                 subsGain: subsGain[subsGain.length-2], ctr: ctr[ctr.length-2],
+                 retent: retent[retent.length-2], likes: likes[likes.length-2] };
+
+  tab('yt-kpis').innerHTML =
+    kpiHtml('Impressões <small style="font-weight:400;color:#666">(TR)</small>',          fmt(tr.impress),                                         deltaBadge(last.impress,  prev.impress).text,  deltaBadge(last.impress,  prev.impress).cls) +
+    kpiHtml('Visualizações <small style="font-weight:400;color:#666">(TR)</small>',        fmt(tr.views),                                           deltaBadge(last.views,    prev.views).text,    deltaBadge(last.views,    prev.views).cls) +
+    kpiHtml('Tempo de Exibição h <small style="font-weight:400;color:#666">(TR)</small>',  tr.watchTime != null ? String(tr.watchTime).replace('.',',')+'h' : '—', '','flat') +
+    kpiHtml('Inscritos Totais <small style="font-weight:400;color:#666">(TR)</small>',     fmt(tr.subsTot),                                         '','flat') +
+    kpiHtml('Inscrições Obtidas <small style="font-weight:400;color:#666">(TR)</small>',   fmt(tr.subsGain),                                        deltaBadge(last.subsGain, prev.subsGain).text, deltaBadge(last.subsGain, prev.subsGain).cls) +
+    kpiHtml('CTR <small style="font-weight:400;color:#666">(TR)</small>',                  fmtP(tr.ctr),                                            deltaBadge(last.ctr,      prev.ctr, true).text,  deltaBadge(last.ctr,  prev.ctr, true).cls) +
+    kpiHtml('Retenção <small style="font-weight:400;color:#666">(TR)</small>',             fmtP(tr.retent),                                         deltaBadge(last.retent,   prev.retent, true).text, deltaBadge(last.retent, prev.retent, true).cls) +
+    kpiHtml('Curtidas <small style="font-weight:400;color:#666">(TR)</small>',             fmt(tr.likes),                                           deltaBadge(last.likes,    prev.likes).text,    deltaBadge(last.likes,    prev.likes).cls);
+
+  const lbl = labels.map(l => l.replace('ª Semana ', ' S').replace('1 S','S1 ').replace('2 S','S2 ').replace('3 S','S3 ').replace('4 S','S4 '));
+
+  mkChart('yt-views', { type:'line', data:{ labels:lbl, datasets:[{
+    label:'Visualizações', data:views, borderColor:C.accent, backgroundColor:'rgba(124,92,255,.12)',
+    fill:true, tension:.35,
+    pointBackgroundColor: pointColors(views, C.accent),
+    pointRadius: pointRadii(views), pointHoverRadius:8
+  }]}, options: lineOpts('Views') });
+
+  mkChart('yt-impressions', { type:'line', data:{ labels:lbl, datasets:[{
+    label:'Impressões', data:impress, borderColor:C.teal, backgroundColor:'rgba(0,212,181,.12)',
+    fill:true, tension:.35,
+    pointBackgroundColor: pointColors(impress, C.teal),
+    pointRadius: pointRadii(impress), pointHoverRadius:8
+  }]}, options: lineOpts('Impressões') });
+
+  mkChart('yt-subs', { type:'bar', data:{ labels:lbl, datasets:[
+    { label:'Inscrições Obtidas', data:subsGain, backgroundColor:C.accent },
+  ]}, options: barOpts() });
+
+  mkChart('yt-ctr', { type:'line', data:{ labels:lbl, datasets:[
+    { label:'CTR %',     data:ctrPct,    borderColor:C.accent, backgroundColor:'rgba(124,92,255,.08)', tension:.35, pointRadius:3 },
+    { label:'Retenção %',data:retentPct, borderColor:C.teal,   backgroundColor:'rgba(0,212,181,.08)',  tension:.35, pointRadius:3 }
+  ]}, options: lineOpts('%') });
+
+  mkChart('yt-engagement', { type:'bar', data:{ labels:lbl, datasets:[
+    { label:'Curtidas',          data:likes,   backgroundColor:C.accent },
+    { label:'Compartilhamentos', data:shares,  backgroundColor:C.teal  },
+    { label:'Views de Perfil',   data:profV,   backgroundColor:C.warn  }
+  ]}, options: barOpts() });
+}
+
+/* ─── TAB SWITCH ─────────────────────────────────────────── */
+function showTab(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  tab(id).classList.add('active');
+  tab('btn-' + id).classList.add('active');
+}
+
+/* ─── MAIN LOAD ──────────────────────────────────────────── */
+async function loadAll() {
+  const badge   = tab('syncBadge');
+  const syncTxt = tab('syncText');
+  const errBnr  = tab('errBanner');
+
+  try {
+    const [ttTable, ytTable] = await Promise.all([
+      gvizLoad(GID_TT, 'A1:Z49',  'cb_tt'),
+      gvizLoad(GID_YT, 'A1:AL49', 'cb_yt')
+    ]);
+
+    renderTikTok(ttTable);
+    renderYouTube(ytTable);
+
+    badge.className    = 'sync-badge ok';
+    const now          = new Date().toLocaleString('pt-BR');
+    syncTxt.textContent = 'Sincronizado';
+    tab('lastSync').textContent = 'Última atualização: ' + now;
+
+  } catch (err) {
+    badge.className    = 'sync-badge error';
+    syncTxt.textContent = 'Erro ao carregar';
+    errBnr.className   = 'err-banner show';
+    errBnr.innerHTML   = `<strong>Não foi possível carregar os dados da planilha.</strong><br>
+      Verifique se a planilha está com acesso <em>"Qualquer pessoa com o link"</em> e tente recarregar a página.<br>
+      <small>Detalhe: ${err.message}</small>`;
+  }
+}
+
+loadAll();
+</script>
+</body>
+</html>
