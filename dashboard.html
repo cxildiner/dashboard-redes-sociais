@@ -237,41 +237,58 @@ const axOpts = (yLbl) => ({
   }
 });
 
-/* ══ CSV FETCH ═══════════════════════════════════════════
-   Uses "Publish to web" CSV URL — requires the sheet to be
-   published via Arquivo → Publicar na web in Google Sheets.
-   This URL returns CSV with Access-Control-Allow-Origin: *
+/* ══ GVIZ JSONP ══════════════════════════════════════════
+   Uses Google Visualization API via JSONP <script> tag.
+   Works with "Anyone with link can view" — no "Publish to
+   web" required, never expires.
    ════════════════════════════════════════════════════════ */
-function pubUrl(gid) {
-  return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/pub?gid=${gid}&single=true&output=csv`;
+function gvizLoad(gid, range, cbName) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      delete window[cbName];
+      reject(new Error('Timeout — verifique sua conexão ou se a planilha está acessível'));
+    }, 15000);
+
+    window[cbName] = (resp) => {
+      clearTimeout(timer);
+      delete window[cbName];
+      if (resp.status === 'error') {
+        reject(new Error(resp.errors?.[0]?.message ?? 'Erro desconhecido da planilha'));
+      } else {
+        resolve(gvizToRows(resp.table));
+      }
+    };
+
+    const s = document.createElement('script');
+    s.onerror = () => { clearTimeout(timer); delete window[cbName]; reject(new Error('Falha ao carregar script do Google Sheets')); };
+    // tqx uses semicolons as internal separators; encode the whole value to avoid browser URL parsing issues
+    const tqx = 'out:json;responseHandler:' + cbName;
+    s.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq`
+          + `?tqx=${encodeURIComponent(tqx)}&gid=${gid}&range=${encodeURIComponent(range)}`;
+    document.head.appendChild(s);
+  });
 }
 
-// Minimal but correct CSV parser (quoted fields, embedded commas)
-function parseCSV(text) {
-  const rows = [];
-  const lines = text.replace(/\r\n?/g, '\n').split('\n');
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    const row = []; let f = '', inQ = false;
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i];
-      if (c === '"')      { if (inQ && line[i+1] === '"') { f += '"'; i++; } else inQ = !inQ; }
-      else if (c === ',' && !inQ) { row.push(f); f = ''; }
-      else f += c;
-    }
-    row.push(f);
-    rows.push(row);
-  }
-  return rows;
+// Convert gviz table (cols + rows) to a flat 2D string array matching CSV format.
+// Row 0 = header labels. Subsequent rows = data as strings (numbers formatted, % as "5.40%").
+function gvizToRows(table) {
+  const header = table.cols.map(c => c.label);
+  const data   = table.rows.map(row =>
+    table.cols.map((_, i) => {
+      const cell = row.c?.[i];
+      if (!cell || cell.v == null) return '';
+      // For percentage columns (pattern contains %) return formatted string like "5.40%"
+      if (table.cols[i].pattern && table.cols[i].pattern.includes('%')) {
+        return (cell.v * 100).toFixed(2) + '%';
+      }
+      return String(cell.v);
+    })
+  );
+  return [header, ...data];
 }
 
-async function fetchCSV(gid) {
-  const resp = await fetch(pubUrl(gid));
-  if (!resp.ok) throw new Error(`HTTP ${resp.status} ao buscar gid=${gid}`);
-  const text = await resp.text();
-  const rows = parseCSV(text);
-  if (rows.length < 2) throw new Error('Planilha vazia ou não publicada (gid=' + gid + ')');
-  return rows; // rows[0]=header, rows[1..]=data
+async function fetchCSV(gid, range) {
+  return gvizLoad(gid, range, 'cb_' + gid);
 }
 
 /* ══ TIKTOK RENDER ═══════════════════════════════════════
@@ -429,8 +446,8 @@ async function loadAll() {
 
   try {
     const [ttRows, ytRows] = await Promise.all([
-      fetchCSV(GID_TT),
-      fetchCSV(GID_YT)
+      fetchCSV(GID_TT, 'A1:Z49'),
+      fetchCSV(GID_YT, 'A1:AL49')
     ]);
 
     renderTikTok(ttRows);
