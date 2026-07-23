@@ -110,9 +110,11 @@
   </div>
 
   <div class="nav-label">Redes</div>
-  <button class="nav-btn active" id="btn-tiktok"    onclick="showTab('tiktok')">   <span class="ico" style="background:#7c5cff"></span>TikTok</button>
-  <button class="nav-btn"        id="btn-youtube"   onclick="showTab('youtube')">  <span class="ico" style="background:#ff5c6c"></span>YouTube — Cortes</button>
-  <button class="nav-btn"        id="btn-instagram" onclick="showTab('instagram')"><span class="ico" style="background:#00d4b5"></span>Instagram</button>
+  <button class="nav-btn active" id="btn-tiktok"           onclick="showTab('tiktok')">          <span class="ico" style="background:#7c5cff"></span>TikTok</button>
+  <button class="nav-btn"        id="btn-youtube"          onclick="showTab('youtube')">         <span class="ico" style="background:#ff5c6c"></span>YouTube — Cortes</button>
+  <button class="nav-btn"        id="btn-youtube_seller"   onclick="showTab('youtube_seller')">  <span class="ico" style="background:#ffb84c"></span>YouTube — Seller Pro</button>
+  <button class="nav-btn"        id="btn-instagram"        onclick="showTab('instagram')">       <span class="ico" style="background:#00d4b5"></span>Instagram — Bruno</button>
+  <button class="nav-btn"        id="btn-instagram_seller" onclick="showTab('instagram_seller')"><span class="ico" style="background:#27c281"></span>Instagram — Seller Pro</button>
 
   <div class="foot">
     <span class="sync-badge loading" id="syncBadge" onclick="loadAll()" title="Clique para recarregar">
@@ -134,9 +136,11 @@
   <div class="err-banner" id="errBanner"></div>
   <div class="period-note" id="periodNote"></div>
 
-  <div id="tiktok"    class="section active"><div class="kpi-grid" id="tiktok-kpis"></div><div class="charts" id="tiktok-charts"></div></div>
-  <div id="youtube"   class="section"><div class="kpi-grid" id="youtube-kpis"></div><div class="charts" id="youtube-charts"></div></div>
-  <div id="instagram" class="section"><div class="kpi-grid" id="instagram-kpis"></div><div class="charts" id="instagram-charts"></div></div>
+  <div id="tiktok"           class="section active"><div class="kpi-grid" id="tiktok-kpis"></div><div class="charts" id="tiktok-charts"></div></div>
+  <div id="youtube"          class="section"><div class="kpi-grid" id="youtube-kpis"></div><div class="charts" id="youtube-charts"></div></div>
+  <div id="youtube_seller"   class="section"><div class="kpi-grid" id="youtube_seller-kpis"></div><div class="charts" id="youtube_seller-charts"></div></div>
+  <div id="instagram"        class="section"><div class="kpi-grid" id="instagram-kpis"></div><div class="charts" id="instagram-charts"></div></div>
+  <div id="instagram_seller" class="section"><div class="kpi-grid" id="instagram_seller-kpis"></div><div class="charts" id="instagram_seller-charts"></div></div>
 
   <div class="foot-note">
     Dados ao vivo · Google Sheets → Reporting Ninja · Chart.js — hospede em <strong>GitHub Pages</strong> ou <strong>Netlify</strong>
@@ -154,9 +158,11 @@ const SHEET_ID   = '10sQEu4w5rVB-OdE6qaFFuuyt160HeNM_k1wXcdmrZoA';
    aqui a linha com o gid dela (pega-se o gid na URL: .../edit#gid=NÚMERO).
    Várias abas da mesma rede são mescladas (ex.: 2026 + 2027). */
 const TABS = [
-  { net:'tiktok',    year:2026, gid:'618666212',  name:'Tiktok - 2026' },
-  { net:'youtube',   year:2026, gid:'1306894247', name:'Youtube - Cortes - 2026' },
-  { net:'instagram', year:2026, gid:'1888522265', name:'Instagram Bruno - 2026' },
+  { net:'tiktok',           year:2026, gid:'618666212',  name:'Tiktok - 2026' },
+  { net:'youtube',          year:2026, gid:'1306894247', name:'Youtube - Cortes - 2026' },
+  { net:'youtube_seller',   year:2026, gid:'1763583022', name:'Youtube - 2026' },
+  { net:'instagram',        year:2026, gid:'1888522265', name:'Instagram Bruno - 2026' },
+  { net:'instagram_seller', year:2026, gid:'1349159724', name:'Instagram Seller Pro - 2026' },
 ];
 
 /* Tipos de métrica:
@@ -196,6 +202,10 @@ const METRICS = {
     { col:8,  label:'Comentários',       type:'flow'  },
   ],
 };
+/* Contas novas: mesma estrutura de colunas das redes originais (0–10 do
+   YouTube e 0–8 do Instagram são idênticas nas abas novas). */
+METRICS.youtube_seller   = METRICS.youtube;
+METRICS.instagram_seller = METRICS.instagram;
 
 /* Gráficos por rede.
    kind: 'line' | 'gradbar' (colunas com gradiente vertical) | 'doughnut'
@@ -223,6 +233,8 @@ const CHARTS = {
     { title:'Views de Perfil',      tag:'por período', kind:'line', cls:'', series:[{col:4,color:'teal'}] },
   ],
 };
+CHARTS.youtube_seller   = CHARTS.youtube;
+CHARTS.instagram_seller = CHARTS.instagram;
 
 /* Presets de período (contam a partir de hoje; dados são semanais). */
 const PERIODS = [
@@ -234,7 +246,14 @@ const PERIODS = [
   { id:'all',  label:'Total',    days:null },
 ];
 let currentPeriod = 'd90';
-const NET_TITLE = { tiktok:'TikTok', youtube:'YouTube — Cortes', instagram:'Instagram' };
+const NET_TITLE = {
+  tiktok:'TikTok',
+  youtube:'YouTube — Cortes',
+  youtube_seller:'YouTube — Seller Pro',
+  instagram:'Instagram — Bruno',
+  instagram_seller:'Instagram — Seller Pro',
+};
+const NETS = Object.keys(NET_TITLE);   // redes exibidas (ordem da sidebar)
 
 /* ══ THEME ═══════════════════════════════════════════════ */
 const C = { accent:'#7c5cff', teal:'#00d4b5', warn:'#ffb84c', up:'#27c281', down:'#ff5c6c', grid:'#20242f', txt:'#8b93a7' };
@@ -441,8 +460,8 @@ function renderPeriodBar(){
 function fmtRange(r){ return r? r[0].toLocaleDateString('pt-BR')+' – '+r[1].toLocaleDateString('pt-BR') : ''; }
 function setPeriod(id){
   currentPeriod=id; renderPeriodBar();
-  ['tiktok','youtube','instagram'].forEach(net=>{ if(store[net]){ renderKPIs(net); renderCharts(net); } });
-  const any=store.tiktok||store.youtube||store.instagram;
+  NETS.forEach(net=>{ if(store[net]){ renderKPIs(net); renderCharts(net); } });
+  const any=NETS.map(n=>store[n]).find(s=>s&&s.rows.length);
   if(any){ const {curRange,prevRange}=slicePeriod(any.rows);
     el('periodNote').innerHTML = curRange? `Período: <b>${fmtRange(curRange)}</b>`+(prevRange?` · comparado a <b>${fmtRange(prevRange)}</b>`:'') : ''; }
 }
@@ -460,10 +479,10 @@ async function loadAll(){
   const badge=el('syncBadge'),txt=el('syncText'),err=el('errBanner');
   badge.className='sync-badge loading'; txt.textContent='Carregando…'; err.className='err-banner';
   renderPeriodBar();
-  ['tiktok','youtube','instagram'].forEach(net=>{
+  NETS.forEach(net=>{
     el(net+'-kpis').innerHTML = METRICS[net].map(()=>`<div class="kpi skeleton"><div class="label">—</div><div class="value">——</div><div class="delta">—</div></div>`).join('');
   });
-  const nets=['tiktok','youtube','instagram'];
+  const nets=NETS;
   // Carrega cada aba listada em TABS (por gid) e mescla por rede.
   const results=await Promise.allSettled(TABS.map((t,i)=>gvizLoad(t.gid,'cb_'+t.net+'_'+t.gid+'_'+i)));
 
