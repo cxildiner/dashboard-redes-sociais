@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dashboard Redes Sociais — v2</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23d95926'/%3E%3Cpath d='M8 21l4.5-7 4 4.5L24 9' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
   :root{
@@ -86,8 +87,15 @@
   .panel,.kpi{animation:fade .32s cubic-bezier(.16,1,.3,1)}
 
   /* ── KPIs ────────────────────────────────────── */
-  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:16px}
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));grid-auto-flow:dense;gap:14px;margin-bottom:16px}
+  /* Métrica "hero" (span>1, definida em METRICS): ocupa mais colunas — evita sobra feia de
+     grade no fim da linha e destaca o dado mais relevante daquela rede. */
+  .kpi.hero .value{font-size:32px}
+  .kpi.hero .label{color:var(--text)}
   .kpi{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:17px 18px;position:relative;overflow:hidden}
+  /* Friso de luz no topo (do dash original, agora em laranja) */
+  .kpi::before,.panel::before{content:"";position:absolute;inset:0 auto auto 0;width:100%;height:1px;
+    background:linear-gradient(90deg,transparent,rgba(217,89,38,.55),transparent);opacity:.7}
   .kpi .label{font-size:11.5px;color:var(--muted);margin-bottom:10px;font-weight:500}
   .kpi .value{font-size:25px;font-weight:700;line-height:1;letter-spacing:-.01em}
   .kpi .delta{font-size:11.5px;margin-top:9px;font-weight:600;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
@@ -101,7 +109,7 @@
   .span2{grid-column:span 2}.span3{grid-column:1/-1}
   @media(max-width:1100px){.charts{grid-template-columns:1fr 1fr}.span2,.span3{grid-column:1/-1}}
   @media(max-width:760px){.charts{grid-template-columns:1fr}}
-  .panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 18px 16px;min-width:0}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 18px 16px;min-width:0;position:relative;overflow:hidden}
   .panel h3{margin:0 0 16px;font-size:14px;color:var(--text);display:flex;justify-content:space-between;align-items:center;font-weight:600}
   .panel h3 .h3-right{display:flex;align-items:center;gap:9px}
   .panel h3 .tag{font-size:11.5px;color:var(--faint);font-weight:400}
@@ -216,21 +224,25 @@ const METRICS = {
     { col:6,  label:'Compartilhamentos', type:'flow'  },
   ],
   youtube: [
+    // Visualizações + Tempo Exibição: mesmo truque do Instagram — a ordem aqui é o que
+    // decide o encaixe do grid "dense". Entre as 2 hero (span:2) tem exatamente 4 métricas
+    // normais (2+1+1+1+1=6=1ª linha cheia), então a 2ª hero é empurrada pro início da 2ª
+    // linha, na MESMA coluna da 1ª — ou seja, embaixo dela, não do lado.
+    { col:2,  label:'Visualizações',     type:'flow', span:2 },
     { col:1,  label:'Impressões',        type:'flow'  },
-    { col:2,  label:'Visualizações',     type:'flow'  },
-    { col:3,  label:'Tempo Exibição',    type:'flow', hours:true },
     { col:4,  label:'Inscritos Totais',  type:'stock' },
     { col:5,  label:'Inscrições Obtidas',type:'flow'  },
     { col:6,  label:'CTR',               type:'rate'  },
+    { col:3,  label:'Tempo Exibição',    type:'flow', hours:true, span:2 },
     { col:7,  label:'Continuaram Assis.',type:'rate'  },
     { col:8,  label:'Curtidas',          type:'flow'  },
     { col:9,  label:'Compartilhamentos', type:'flow'  },
     { col:10, label:'Views de Perfil',   type:'flow'  },
   ],
   instagram: [
-    { col:1,  label:'Seguidores Totais', type:'stock' },
+    { col:1,  label:'Seguidores Totais', type:'stock', span:3 },
     { col:2,  label:'Novos Seguidores',  type:'flow'  },
-    { col:3,  label:'Visualizações',     type:'flow'  },
+    { col:3,  label:'Visualizações',     type:'flow', span:3 },
     { col:4,  label:'Views de Perfil',   type:'flow'  },
     { col:5,  label:'Curtidas',          type:'flow'  },
     { col:6,  label:'Compartilhamentos', type:'flow'  },
@@ -433,7 +445,8 @@ function renderKPIs(net){
   const {cur,prev}=slicePeriod(store[net].rows);
   el(net+'-kpis').innerHTML = METRICS[net].map(m=>{
     const cv=aggregate(cur,m), pv=aggregate(prev,m);
-    return `<div class="kpi"><div class="label">${m.label}</div>
+    const span=m.span||1;
+    return `<div class="kpi${span>1?' hero':''}" style="grid-column:span ${span}"><div class="label">${m.label}</div>
       <div class="value">${fmtMetric(m,cv)}</div>
       ${deltaHTML(m,cv,pv)}</div>`;
   }).join('');
@@ -451,8 +464,11 @@ function lineStroke(hex){ return (ctx)=>{ const {chart}=ctx,{ctx:cc,chartArea}=c
 function barGrad(){ return (ctx)=>{ const {chart}=ctx,{ctx:cc,chartArea}=chart; if(!chartArea)return C.accent;
   const g=cc.createLinearGradient(0,chartArea.top,0,chartArea.bottom); g.addColorStop(0,C.accent2); g.addColorStop(1,C.accent); return g; }; }
 
+// Animação curta (mesma sensação do toggle rosca/linha) em TODO gráfico — suave, mas rápida
+// o bastante pra não pesar quando o usuário troca de período ou de aba com frequência.
+const ANIM={duration:260,easing:'easeOutQuart'};
 const axOpts=(pct)=>({
-  responsive:true, maintainAspectRatio:false, animation:false,
+  responsive:true, maintainAspectRatio:false, animation:ANIM,
   interaction:{mode:'index',intersect:false},
   plugins:{ legend:{ display:false },
     tooltip:{ backgroundColor:'#1a1a1d', borderColor:C.grid, borderWidth:1, padding:10, titleColor:'#f5f5f6', bodyColor:'#c7c7cb',
@@ -465,7 +481,7 @@ const axOpts=(pct)=>({
   }
 });
 const doughOpts=()=>({
-  responsive:true, maintainAspectRatio:false, animation:false, cutout:'66%',
+  responsive:true, maintainAspectRatio:false, animation:ANIM, cutout:'66%',
   plugins:{ legend:{ position:'right', labels:{ color:C.txt, boxWidth:8, boxHeight:8, usePointStyle:true, pointStyle:'circle', padding:12, font:{size:11} } },
     tooltip:{ backgroundColor:'#1a1a1d', borderColor:C.grid, borderWidth:1, padding:10, titleColor:'#f5f5f6', bodyColor:'#c7c7cb',
       callbacks:{ label:c=>` ${c.label}: ${Number(c.parsed).toLocaleString('pt-BR')}` } } }
@@ -496,24 +512,22 @@ function setChartView(net,idx,mode){
   if(panelEl) panelEl.querySelectorAll('.ctbtn').forEach((b,i)=> b.classList.toggle('active', (i===0?'doughnut':'line')===mode));
   const {cur}=slicePeriod(store[net].rows);
   const labels=cur.map(r=> r.date.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}));
-  renderPanelChart(net, idx, CHARTS[net][idx], cur, labels, true);
+  renderPanelChart(net, idx, CHARTS[net][idx], cur, labels);
 }
 
 // Cria/atualiza o Chart.js de UM painel específico (canvas já precisa existir no DOM).
-// animateSwap=true só quando é o usuário trocando rosca↔linha (transição suave e rápida,
-// mas targeted); nas rendas completas (troca de aba/período) fica animation:false, senão
-// toda filtragem de período reanimaria todos os gráficos e pareceria lento.
-function renderPanelChart(net, idx, cfg, cur, labels, animateSwap){
+// Animação curta (ANIM, ~260ms) em todo mundo agora — inclusive troca de período/aba,
+// que fica suave sem parecer lenta.
+function renderPanelChart(net, idx, cfg, cur, labels){
   if(charts[net+idx]){ charts[net+idx].destroy(); }
 
   if(cfg.kind==='doughnut' && (chartView[net+idx]||'doughnut')==='doughnut'){
     const vals=cfg.series.map(s=> cur.reduce((a,r)=> a+(r.vals[s.col]||0), 0));
     const cols=cfg.series.map(s=> C[s.color]||s.color);
-    const opts=doughOpts(); if(animateSwap) opts.animation={duration:260,easing:'easeOutQuart'};
     charts[net+idx]=new Chart(el(`${net}-c${idx}`),{ type:'doughnut',
       data:{ labels:cfg.series.map(s=>s.label), datasets:[{ data:vals, backgroundColor:cols.map(h=>hexA(h,.9)),
         borderColor:'#151517', borderWidth:2, hoverBorderColor:'#151517', hoverOffset:6 }] },
-      options:opts });
+      options:doughOpts() });
     return;
   }
 
@@ -526,8 +540,7 @@ function renderPanelChart(net, idx, cfg, cur, labels, animateSwap){
       return { label:s.label, data, borderColor:hex, backgroundColor:hex, fill:false,
         borderWidth:1.8, tension:.38, pointRadius:0, pointHoverRadius:4, pointHoverBackgroundColor:hex, pointHoverBorderColor:'#fff', pointHoverBorderWidth:1 };
     });
-    const opts=axOptsMulti(); if(animateSwap) opts.animation={duration:260,easing:'easeOutQuart'};
-    charts[net+idx]=new Chart(el(`${net}-c${idx}`), { type:'line', data:{labels,datasets}, options:opts });
+    charts[net+idx]=new Chart(el(`${net}-c${idx}`), { type:'line', data:{labels,datasets}, options:axOptsMulti() });
     return;
   }
 
@@ -557,7 +570,7 @@ function renderCharts(net){
     const rightHTML=`<span class="h3-right">${cfg.kind==='doughnut'?toggleHTML(net,idx):''}<span class="tag">${cfg.tag||''}</span></span>`;
     panel.innerHTML=`<h3><span>${cfg.title}</span>${rightHTML}</h3><div class="cwrap"><canvas id="${net}-c${idx}"></canvas></div>`;
     host.appendChild(panel);
-    renderPanelChart(net, idx, cfg, cur, labels, false);
+    renderPanelChart(net, idx, cfg, cur, labels);
   });
 }
 
